@@ -1,0 +1,28 @@
+How do you secure a Linux server for production?
+
+To secure a production Linux server—especially a high-performance Oracle RAC node—you must apply security at the network, OS, and user levels without compromising system performance. 
+
+1. Network Hardening
+Disable Root SSH: Edit /etc/ssh/sshd_config and set PermitRootLogin no. Force users to log in as a standard user and use sudo.
+Change Default Ports: Move SSH from port 22 to a non-standard port to reduce automated "brute force" attacks.
+Use SSH Keys: Disable password authentication entirely in favor of SSH Key-based authentication.
+Configure Firewalls: Use iptables or firewalld to implement a Default Deny policy. Only open ports required for Oracle (1521), SSH, and monitoring. 
+
+2. User & Access Control
+Principle of Least Privilege: Ensure the oracle and grid users only have the permissions necessary for their specific tasks. Use Sudoers policies to restrict commands.
+Password Complexity: Enforce strong password policies using PAM (Pluggable Authentication Modules) in /etc/pam.d/system-auth.
+Lock Inactive Accounts: Automatically disable accounts after a period of inactivity. 
+
+3. System & Filesystem Security 
+Partitioning: Use separate partitions for /var, /home, and /tmp. Mount /tmp with noexec, nosuid, and nodev to prevent the execution of malicious scripts.
+Disable Unnecessary Services: Run systemctl list-unit-files --state=enabled and disable any service not strictly required (e.g., avahi-daemon, cups).
+Kernel Hardening: Tune /etc/sysctl.conf to prevent IP spoofing and ignore broadcast pings (e.g., net.ipv4.conf.all.accept_source_route = 0). 
+
+4. Logging & Monitoring
+Auditd: Configure the Linux Audit Daemon (auditd) to track changes to critical configuration files like /etc/passwd or /etc/hosts.
+Centralized Logging: Ship logs to a central server (like Syslog-ng or ELK) so that if a server is compromised, the "audit trail" cannot be deleted by the attacker.
+Banner Warnings: Set up /etc/issue and /etc/motd to display legal warnings regarding unauthorized access. 
+
+5. Patch Management
+Regular Updates: Use yum update or dnf update to apply security patches. For RAC systems, coordinate with the DBA team to use Rolling Patching to maintain uptime.
+
