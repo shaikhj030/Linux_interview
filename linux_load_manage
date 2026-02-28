@@ -71,3 +71,46 @@ iostat -xz 1 (Look for the disk with 100% %util).
 Check for "Uninterruptible Sleep" processes:
 ps aux | awk '$8 ~ /D/' (Processes in the 'D' state are those stuck waiting for disk, contributing to that high r count).
 
+To analyze which processes are "maxing out" your system resources, you need to look at three specific dimensions: CPU, Memory, and I/O.
+
+On a 46-core RAC system, a single process might only show 2% total CPU usage but could still be a bottleneck if it's single-threaded or stuck in I/O wait.
+
+1. Identify CPU-Maxed Processes
+If your CPU load is high, use top or htop to find the "Top Talkers."
+Command: top -b -n 1 -o %CPU | head -n 20
+What to look for:
+%CPU: If this is >100% on a multi-core system, the process is multi-threaded.
+SHR (Shared Memory): For Oracle, this should be high (SGA). If it's low, the process might not be attached to the SGA correctly.
+Command: Press 1 while in top to see the load distribution across all 46 cores.
+
+2. Identify Memory-Maxed Processes
+Since you have 80GB of RAM, you want to ensure no process is causing "paging" or "swapping."
+Command: ps -eo pid,ppid,cmd,%mem,rss --sort=-rss | head -n 15
+Columns to watch:
+RSS (Resident Set Size): The actual physical memory the process is using (in KB).
+%MEM: The percentage of total RAM used by that process.
+Oracle Tip: Many Oracle processes will show high memory because they all map to the same Shared Memory (SGA). Look for processes where RSS is significantly higher than others.
+
+3. Identify I/O-Maxed Processes (The "Silent" Bottleneck)
+In your earlier vmstat output, you had high wa (I/O Wait). A process can max out the system without using much CPU if it's hitting the disk too hard.
+Command: iotop -oPa
+-o: Show only processes actually doing I/O.
+-P: Show processes instead of threads.
+-a: Show accumulated I/O since the command started (great for finding "bursty" processes).
+What to look for: The DISK READ and DISK WRITE columns. On a RAC system, look for dbw0 (Database Writer) or ora_lms (Global Cache Service) processes.
+
+4. Advanced: Analysis by "Thread State"
+Sometimes a process isn't using CPU but is still the bottleneck because it's Blocked.
+Find "Uninterruptible Sleep" (D State) processes:
+
+ps -eo state,pid,cmd | grep "^D"
+
+Processes in D state are usually waiting for Disk I/O or Network Filesystems (NFS). In RAC, if an ASM disk is slow, you will see many Oracle processes in this state.
+
+5. Summary Table for Interview
+Bottleneck	    Tool	            Key Metric
+CPU	            top	             %CPU, us vs sy
+Memory	    free -m, ps	        RSS, si/so (swap)
+Disk I/O	 iotop, iostat	      %util, avgqu-sz, bi/bo
+Network	   nethogs, iftop	      sent/received per process
+
