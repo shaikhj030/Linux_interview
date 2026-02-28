@@ -1,0 +1,72 @@
+these limits prevent "Resource Temporarily Unavailable" errors (forking issues) and "Too Many Open Files" during high-load Oracle operations.
+Add these lines to /etc/security/limits.conf (or a dedicated file in /etc/security/limits.d/):
+Recommended Limits for Oracle & Grid Users
+
+# --- ORACLE USER LIMITS ---
+oracle   soft   nofile    1024
+oracle   hard   nofile    65536
+oracle   soft   nproc     16384
+oracle   hard   nproc     16384
+oracle   soft   stack     10240
+oracle   hard   stack     32768
+oracle   soft   memlock   unlimited
+oracle   hard   memlock   unlimited
+oracle   soft   data      unlimited
+oracle   hard   data      unlimited
+
+# --- GRID USER LIMITS (For Clusterware) ---
+grid     soft   nofile    1024
+grid     hard   nofile    65536
+grid     soft   nproc     16384
+grid     hard   nproc     16384
+grid     soft   stack     10240
+grid     hard   stack     32768
+
+
+Why these specific values?
+
+memlock set to unlimited: This is mandatory if you are using HugePages. It allows the Oracle process to "lock" its SGA in physical RAM so it never gets swapped to disk.
+nproc (Processes): With 46 cores and a RAC setup, Oracle spawns many background processes (LMS, PMON, DBWn) plus parallel query slaves. Setting this to 16,384 prevents the OS Error: 11 (Resource temporarily unavailable) when the system is busy.
+nofile (Open Files): Oracle opens many datafiles, redo logs, and trace files simultaneously. A low limit here causes the database to crash or hang during I/O-intensive tasks.
+stack: Oracle recommends at least 10MB (10240) to prevent stack overflow errors during complex PL/SQL executions.
+
+Verification Step
+
+After saving the file, you must re-log in as the oracle user for these to take effect. Verify them by running:
+
+su - oracle
+ulimit -Sa   # Check Soft limits
+ulimit -Ha   # Check Hard limits
+
+For a deep dive into why these are required, refer to the Oracle Database Installation Guide for Linux.
+
+To calculate the exact vm.nr_hugepages for your 80GB RAM server, you must match the total SGA size of all running Oracle instances to the available HugePage pool. 
+
+
+1. The Core Formula
+The standard calculation for Linux (where the default Hugepagesize is 2MB) is: 
+
+vm.nr_hugepages = (Total SGA size in MB / 2 MB) + a small buffer (e.g., 5–10 pages) 
+
+Example for a 64GB SGA:
+Convert SGA to MB: 
+.
+Divide by 2MB: 
+ pages.
+Add buffer: 32,778 pages. 
+
+
+2. Step-by-Step Calculation Procedure
+Check HugePage Size: Ensure your system uses 2048 KB pages by running grep Hugepagesize /proc/meminfo.
+Get Total SGA: In SQL*Plus, run show parameter sga_max_size to find the exact memory allocated.
+Disable AMM: HugePages are not compatible with Automatic Memory Management (MEMORY_TARGET). You must use Automatic Shared Memory Management (SGA_TARGET).
+Run the Oracle Script: For the most accurate result, download and run the hugepages_settings.sh script from My Oracle Support (Doc ID 401749.1) while your databases are running. It automatically calculates the required pages based on current shared memory segments. 
+
+3. Application & Verification
+Apply: Add the value to /etc/sysctl.conf: vm.nr_hugepages = <calculated_value>.
+Reload: Run sysctl -p.
+Verify: Run grep Huge /proc/meminfo. You should see HugePages_Total match your setting, and HugePages_Free should decrease once the database is restarted. 
+
+4. Important RAC Consideration
+In an Oracle RAC environment, ensure the memlock setting in /etc/security/limits.conf is at least the size of your HugePage pool in KB (Pages × 2048). 
+
