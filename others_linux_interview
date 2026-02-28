@@ -1,0 +1,90 @@
+What is the significance of the /proc filesystem?
+It is a virtual filesystem providing an interface to kernel data structures. You can view real-time system info (e.g., /proc/meminfo, /proc/cpuinfo) or even tune kernel parameters at runtime by writing to files in /proc/sys
+
+1. Real-Time Process Inspection
+Every running process has a directory named after its Process ID (PID) (e.g., /proc/1234). This is how tools like ps, top, and htop get their data. Key files inside include:
+/proc/[pid]/cmdline: The full command used to start the process.
+/proc/[pid]/environ: Environment variables (crucial for troubleshooting Oracle RAC environment issues).
+/proc/[pid]/fd: A subdirectory containing links to every file the process has open (essential for finding "deleted but open" files).
+
+2. System Hardware & Resource Monitoring
+It provides a human-readable format for hardware and kernel status. Production support engineers use this to verify system health without specialized tools:
+/proc/meminfo: Detailed RAM usage (more granular than the free command).
+/proc/cpuinfo: Details about the 46 cores you mentioned (clock speed, cache, etc.).
+/proc/loadavg: The raw source for the load average values you see in uptime.
+
+3. Kernel Tuning (The /proc/sys Directory)
+This is the most critical area for an experienced admin. You can modify kernel behavior at runtime without a reboot by writing values here:
+/proc/sys/net/: Used to tune TCP/IP settings (e.g., increasing somaxconn for high-traffic RAC interconnects).
+/proc/sys/vm/: Used to tune Virtual Memory behavior, such as swappiness or dirty_ratio.
+/proc/sys/fs/file-max: Defines the maximum number of open file handles the system can support.
+
+n Linux production support, kernel tuning involves modifying parameters that control system behavior (like networking, memory, and I/O) without a reboot. 
+1. Temporary Tuning (Runtime Only)
+This is best for testing changes. These settings are lost after a reboot. 
+
+Via sysctl command:
+Use sysctl -w to change a value. Example for your RAC system to increase the local port range:
+sudo sysctl -w net.ipv4.ip_local_port_range="9000 65535".
+Via /proc/sys directory:
+Directly write to the pseudo-file. This is often used in automation scripts.
+echo 10 | sudo tee /proc/sys/vm/swappiness. 
+
+2. Permanent Tuning (Survives Reboot)
+To make changes stick, you must add them to configuration files. 
+
+Legacy Method: Edit /etc/sysctl.conf directly.
+Modern Best Practice: Create a specific file in /etc/sysctl.d/. This keeps application-specific tunings separate.
+Create file: sudo vi /etc/sysctl.d/98-oracle-rac.conf
+Add your parameters:
+
+kernel.shmmax = 4294967295
+net.core.rmem_max = 4194304
+vm.swappiness = 10
+
+
+Apply changes immediately: Run sudo sysctl --system (or sysctl -p /etc/sysctl.d/filename.conf) to load the new values into the active kernel without restarting the server. 
+
+3. Critical Tunings for Oracle RAC
+For an experienced professional, you should mention these specific parameters commonly required for RAC: 
+
+Shared Memory (kernel.shmmax, kernel.shmall): Defines the limits for the Oracle SGA.
+Networking (net.core.rmem_max, net.core.wmem_max): Critical for RAC Cache Fusion performance over the private interconnect.
+I/O Scheduling: Changing the scheduler to deadline or none (for SSDs) via /sys/block/sdX/queue/scheduler to reduce latency during heavy bi (block in) operations.
+
+what is basic requirement kernel tuning for new linux server?
+
+For a fresh Linux production server, basic kernel tuning focuses on resource limits, network stability, and memory efficiency. While application-specific tuning (like for Oracle RAC) is deeper, these are the universal "day-one" configurations.
+
+1. File Handles and Processes
+The default limits are often too low for modern applications, leading to "Too many open files" errors.
+
+fs.file-max: Increase the system-wide limit for open file descriptors.
+fs.nr_open: The maximum files a single process can open.
+Configuration: Add to /etc/sysctl.conf:
+
+fs.file-max = 2097152
+
+
+2. Virtual Memory (The "Swappiness" Factor)
+By default, Linux moves inactive memory to disk (Swap) quite aggressively. For production servers with high RAM (like your 80GB system), you want to keep data in physical memory as long as possible.
+vm.swappiness: Set this to 10 (or even 1 for databases). This tells the kernel to only swap as a last resort.
+vm.vfs_cache_pressure: Set to 50 to encourage the kernel to keep directory and inode caches in memory longer.
+Reference: Review Red Hat's Virtual Memory Parameters for detailed impacts.
+
+3. Networking (The TCP Stack)
+Standard settings are optimized for desktop use, not high-concurrency servers.
+net.core.somaxconn: Increases the size of the listen queue for accepting new connections (default is usually 128; increase to 1024 or higher).
+net.ipv4.tcp_fin_timeout: Reduces the time a socket spends in the FIN-WAIT-2 state, freeing up resources faster.
+net.ipv4.ip_local_port_range: Expands the range of ports available for outgoing connections (e.g., 10000 65535).
+
+4. HugePages (Critical for Databases)
+For servers with large memory footprints, standard 4KB memory pages create overhead in the Page Table.
+Standard HugePages: Pre-allocate these for large databases (Oracle/PostgreSQL) to lock memory and prevent swapping.
+Transparent HugePages (THP): Generally disabled for database servers to prevent unpredictable performance spikes.
+
+Summary Checklist for a New Server:
+Update Limits: Modify /etc/security/limits.conf for the application user.
+Apply Sysctl: Create a custom file in /etc/sysctl.d/ and run sysctl --system.
+Disable THP: Add transparent_hugepage=never to the GRUB boot loader if it's a database server.
+
