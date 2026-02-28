@@ -1,0 +1,36 @@
+A production server is unreachable. What is your approach?
+
+When a production server goes dark, the goal is to isolate the layer of failure as quickly as possible. For an experienced candidate, the answer should follow a structured "Bottom-Up" troubleshooting methodology. 
+
+1. External Network Layer (Connectivity)
+
+Start by verifying if the server is alive on the network: 
+Ping: Use ping <IP> to check basic ICMP reachability.
+Traceroute: If ping fails, use traceroute or mtr to see if the packet is dropping at a specific hop or firewall.
+Port Check: Use nc -zv <IP> <Port> (Netcat) or telnet to check if the specific application port (e.g., 1521 for Oracle) is open. If ping works but the port is closed, the server is up but the service/firewall is the issue. 
+
+2. Access Layer (Remote Management)
+
+If SSH is unreachable, use "Out-of-Band" management: 
+Console Access: Log in via iDRAC, ILO, or VCenter console.
+Check for "Kernel Panic": Look for a "black screen" with a stack trace. This usually requires a hard reboot.
+Check for Resource Exhaustion: If the console is sluggish, the CPU might be at 100% or the system is in an OOM (Out of Memory) loop. 
+
+3. System Layer (Health Check)
+
+Once logged into the console, run the "Quick Four": 
+Load: uptime to see if the load average is insane.
+Disk: df -h. If the root (/) or /var partition is 100% full, many services (including SSH/Logging) will fail.
+Memory: free -m. Check if Swap is being heavily used, indicating a memory leak.
+Inodes: df -i. A disk can have space but be out of "index nodes," preventing new files (logs/temp files) from being created. 
+
+4. Service & Log Layer (The "Why")
+
+Systemd: Check service status: systemctl status <service_name>.
+Logs:
+/var/log/messages or dmesg | tail -n 50 for hardware or kernel errors.
+/var/log/secure to see if SSH logins are being blocked by Fail2Ban or TCP Wrappers.
+Firewall: Check iptables -L or firewall-cmd --list-all to ensure a recent rule change didn't lock everyone out. 
+5. Oracle RAC Specific (For your environment)
+Check Grid Infrastructure: Use crsctl check crs and crsctl stat res -t. If the clusterware is down, the VIP (Virtual IP) will be unreachable, making the DB appear "down" to the application even if the physical node is up.
+Pro-Tip for Interviews: Always mention Incident Management. Start your answer by saying, "First, I would verify if there were any recent Scheduled Changes or if a Monitoring Alert was triggered simultaneously."
