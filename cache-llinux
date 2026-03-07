@@ -1,0 +1,43 @@
+In Linux, "dropping caches" refers to manually instructing the kernel to clear the PageCache, dentries, and inodes from system memory. While this recovers RAM that was used to speed up disk access, it is a specialized administrative action rather than a routine maintenance task. 
+Primary Uses
+Benchmarking and Testing: It is most commonly used to clear the RAM before running I/O-intensive performance tests. This ensures that data is read directly from the disk rather than memory, providing a "clean slate" for accurate measurements.
+Debugging and Troubleshooting: Developers use it to simulate "cold cache" scenarios or to investigate if a performance bottleneck is caused by cached data.
+Addressing Kernel Bugs: It can serve as a temporary workaround for specific kernel or filesystem bugs where memory is not being reclaimed correctly (e.g., zombie memcgroups or issues with certain ZFS/NFS versions).
+Memory Fragmentation: Dropping caches can free up contiguous blocks of RAM needed for Huge Pages or virtual machine migrations, which might otherwise fail if memory is too fragmented. 
+  How to Drop Caches
+This is a non-destructive operation that only clears "clean" (already written to disk) data. It is standard practice to run sync first to ensure all "dirty" data is written to disk so it can be cleared
+
+Command 	                                  Action
+echo 1 > /proc/sys/vm/drop_caches	Clears PageCache (file contents)
+echo 2 > /proc/sys/vm/drop_caches	Clears dentries and inodes (filesystem metadata)
+echo 3 > /proc/sys/vm/drop_caches	Clears all (PageCache + dentries + inodes)
+
+Important Considerations
+Performance Hit: Dropping caches forces the system to re-read everything from slower disk storage the next time it is needed, which temporarily slows down the system.
+Automatic Management: Linux is designed to use as much available RAM as possible for caching to improve performance; it will automatically release this memory if an application needs it.
+Production Safety: Regularly scheduling cache drops on production servers is generally discouraged as it can lead to performance spikes and unnecessary disk strain.
+
+If your system is sluggish, dropping caches is usually a temporary fix that addresses the symptom rather than the cause. In an Oracle environment, "high memory usage" is often normal because Linux intentionally uses "free" RAM to speed up disk access. 
+1. Distinguish "Used" from "Available" 
+Run free -h and look at the available column, not the "free" column. 
+
+High Buff/Cache + High Available: This is healthy. Linux is just "borrowing" RAM to speed up your database logs and files.
+Low Available + High Swap: This indicates a real problem, like a memory leak or an oversized Oracle SGA.
+
+2. Identify the Real Culprit
+If the system is truly slow, check these specific areas before dropping caches:
+Oracle SGA/PGA: Ensure your SGA_TARGET and PGA_AGGREGATE_TARGET aren't exceeding physical RAM.
+HugePages: Check if HugePages are configured. Without them, the OS wastes significant CPU/RAM managing the page table for large databases.
+Zombie Sessions: Your script already filters session kills; check if many oracle processes are hanging and consuming RAM. 
+
+3. Quick Diagnostics
+Use these commands to see what is actually hogging memory:
+Top Consumers: ps aux --sort=-%mem | head
+Live Monitor: Run htop (if installed) or top and press M to sort by memory.
+I/O Wait: Run vmstat 1 5. If the wa (wait) column is high, your disk is the bottleneck, and dropping caches will actually make it worse by forcing more disk reads.
+
+Summary of Actions
+Sync first: Always run sync before dropping caches to ensure data is safe on disk.
+Clear All: echo 3 > /proc/sys/vm/drop_caches
+Monitor: If memory fills up and performance drops again immediately, you likely need to limit Oracle's memory parameters or add physical RAM
+
