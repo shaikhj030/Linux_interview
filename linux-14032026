@@ -1,0 +1,54 @@
+1. Data Integrity & Storage
+Q: How do you ensure no data loss during a file move between filesystems?
+A: Use rsync -av --checksum. Unlike cp or mv, rsync with --checksum verifies the data integrity of the source and destination. In banking, we often use md5sum or sha256sum to generate a manifest before and after moving critical financial logs or database backups.
+Q: A filesystem is 100% full, but du shows only 50% usage. What is happening?
+A: This usually happens when a large file (like an Oracle archive log) was deleted with rm but is still being held open by a process (like the database or a backup agent).
+Fix: Use lsof +L1 to find the process ID and kill it, or truncate the file instead of deleting it next time.
+
+2. Security & Compliance (PCI-DSS)
+Q: How do you track who moved or deleted a specific file on a production server?
+A: We use the Linux Audit Framework (auditd). I would configure a "watch" on the directory: auditctl -w /u01/app/oracle/ -p wa -k oracle_changes. This logs every write/attribute change to /var/log/audit/audit.log.
+
+Q: how to check delete log files using auditctl ?
+A: To monitor and check for file deletions in a banking or production environment, you use the Linux Audit system (auditd). Unlike the ls or find commands, auditctl allows you to see who (user ID) and what (process ID) performed the deletion after the file is already gone
+1. Set a "Watch" on the Directory 
+First, you must tell the kernel to monitor the specific directory where your logs are stored. Use the -k (key) flag to tag these events for easy searching later.
+
+# Monitor the /u01/app/oracle/logs directory for writes (w) and attribute changes (a)
+# -k 'log_deletion' is our custom tag for searching logs
+sudo auditctl -w /u01/app/oracle/logs -p wa -k log_deletion
+
+-w: Watch the specified path.
+-p wa: Trigger an event on write (includes deletion) or attribute changes (like chmod).
+-k: Assigns a unique key to the rule so you can filter the audit log easily. 
+
+2. Check the Audit Logs for Deletions
+Once a file is deleted, it is recorded in /var/log/audit/audit.log. Use the ausearch command to extract the relevant information
+# Search for events tagged with our 'log_deletion' key
+# Use -i to interpret IDs (like UID 0) into names (like root)
+sudo ausearch -k log_deletion -i
+
+3. Identify the "Who" and "How"
+When you run ausearch, look for the following fields in the output to identify the culprit
+
+auid: The "Audit User ID" (the actual user who logged in, even if they used sudo).
+uid: The user ID that executed the command (e.g., 0 for root).
+comm: The command used (e.g., rm or mv).
+exe: The full path to the executable used (e.g., /usr/bin/rm).
+addr: The IP address if the deletion happened over an SSH session.
+
+4. Make the Rules Permanent
+Rules added via auditctl are lost after a reboot. To make them permanent for banking compliance, add them to your audit rules file
+
+RHEL/CentOS 7+: /etc/audit/rules.d/audit.rules
+Ubuntu/Debian: /etc/audit/audit.rules
+
+Add this line to the file:
+-w /u01/app/oracle/logs -p wa -k log_deletion
+
+4. Automation & Scripting (xargs/Find)
+Q: How do you safely find and compress logs older than 30 days without locking the system?
+A: find /logs -type f -mtime +30 -print0 | xargs -0 -P 2 gzip.
+Note: Using -P 2 allows xargs to run parallel jobs, which is faster on multi-core banking servers, and -print0 ensures filenames with spaces don't break the script.
+
+
