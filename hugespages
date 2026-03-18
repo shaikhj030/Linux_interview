@@ -1,0 +1,83 @@
+What is HugePages and when should it be enabled?
+HugePages allows the Linux kernel to manage memory in much larger chunks than the default 4KB. It is critical for tuning high-performance databases (like Oracle or PostgreSQL) to reduce the overhead of page table lookups and improve memory access speed.
+HugePages is a feature of the Linux kernel that allows the system to manage memory in chunks larger than the default 4KB.
+By default, the CPU tracks memory using small "pages." If you have a lot of RAM (like 128GB+), tracking millions of tiny 4KB pages creates a massive "map" (Page Table) that slows down the CPU. HugePages (usually 2MB or 1GB in size) makes this map much smaller and faster to read.
+Where is it used?
+HugePages are primarily used in high-performance environments where applications need to access massive amounts of RAM quickly:
+Databases: Oracle, PostgreSQL, MySQL (InnoDB), and MariaDB.
+Virtualization: KVM/QEMU (Hypervisors) use it to give "guest" VMs faster memory access.
+Big Data: SAP HANA or In-memory caches like Redis.
+Java Applications: Large JVM heaps benefit from reduced garbage collection overhead.
+
+How to Calculate HugePages?
+To calculate how many HugePages you need, you first need to know:
+The size of your application's memory requirement (e.g., your Database SGA or Shared Buffers).
+The standard HugePage size on your system (usually 2048 KB or 2MB).
+
+The Formula:
+Example Calculation:
+If you want to allocate 8GB of RAM for a PostgreSQL database:
+Convert 8GB to KB: 
+
+Divide by 2048 KB: 
+
+Final Recommendation: Set it to 4110 (adding a small buffer for safety).
+
+3. How to Check Your System Values
+Run this command to see your current HugePage settings:
+
+grep Huge /proc/meminfo
+
+Hugepagesize: This is your denominator (usually 2048 kB).
+HugePages_Total: How many are currently allocated.
+HugePages_Free: How many are currently unused.
+
+ How to Set HugePages (Temporarily)
+To test 4110 pages immediately:
+
+echo 4110 | sudo tee /proc/sys/vm/nr_hugepages
+
+Would you like the steps to make this HugePages allocation permanent so it survives a server reboot?
+
+To make HugePages permanent, you need to configure the kernel to reserve them during the boot process. This ensures that the memory is allocated before it becomes fragmented by other processes
+
+1. Using sysctl (Recommended for 2MB Pages)
+The most common way to persist HugePages is by adding the parameter to your system configuration files. 
+
+Edit the configuration file: Open /etc/sysctl.conf or create a new file in /etc/sysctl.d/ (e.g., /etc/sysctl.d/90-hugepages.conf).
+Add the allocation line:
+
+vm.nr_hugepages = 4110
+
+Apply the changes: Run sudo sysctl -p to load the settings immediately, though a reboot is recommended to ensure the memory is contiguous
+
+Using Kernel Boot Parameters (Required for 1GB Pages) 
+For very large HugePages (1GB), you must use boot parameters because the system cannot find a large enough block of contiguous memory once the OS has finished booting
+
+Edit GRUB configuration: Open /etc/default/grub.
+Modify GRUB_CMDLINE_LINUX: Add your desired page size and count.
+
+GRUB_CMDLINE_LINUX="default_hugepagesz=1G hugepagesz=1G hugepages=8"
+
+Update GRUB and Reboot:
+Ubuntu/Debian: sudo update-grub
+RHEL/CentOS: sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+
+Setting Memory Limits (memlock)
+If you are using HugePages for a specific application (like an Oracle or PostgreSQL database), you must also allow that user to "lock" enough memory in RAM
+
+Edit /etc/security/limits.conf
+
+# Replace 'oracle' with your specific service user
+oracle soft memlock 8388608
+oracle hard memlock 8388608
+
+Note: The value is in KB. For 8GB of HugePages, use 8,388,608 KB.
+
+4. Verification
+After rebooting, confirm the allocation is successful: 
+
+grep Huge /proc/meminfo
+
+If HugePages_Total is lower than what you requested, your system likely didn't have enough contiguous free memory at boot time.
+
