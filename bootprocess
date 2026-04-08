@@ -1,7 +1,9 @@
 Linux Admin concepts 
 Booting process explained
+
 The Linux boot process begins with BIOS performing a Power-On Self-Test (POST) to initialize hardware and locate the boot device. The Master Boot Record (MBR) then initiates the GRUB bootloader, which loads the kernel, mounts the root filesystem, and launches the init process to reach the login prompt.
 All-Stages-of-Linux-Booting-Process-Architecture/README.md at master · nu11secur1ty/All-Stages-of-Linux-Booting-Process-Architecture · GitHub
+
 All Stages of Linux Booting Process Explained
 This article describes linux booting process in detail, what are the steps involved, which scripts are run, what configuration files are read and their order, from turning on the system till getting the login prompt. Although this article projects a general view of booting a Linux system, but some configuration files and commands can be Red Hat specific. You can also download linux boot process pdf version for future reference.
 1. BIOS Initialization
